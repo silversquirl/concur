@@ -28,7 +28,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	}
 
 	for _, f := range pass.Files {
-		ast.Walk(tagCheckVisitor{pass, f.Comments, nil}, f)
+		ast.Walk(tagCheckVisitor{pass, f, nil}, f)
 	}
 
 	return nil, nil
@@ -41,14 +41,12 @@ func (f tagFact) String() string {
 }
 func (tagFact) AFact() {}
 
-func commentTags(groups ...*ast.CommentGroup) (tags []string) {
-	for _, group := range groups {
-		for _, comment := range group.List {
-			if strings.HasPrefix(comment.Text, "//tag:") {
-				tag := strings.TrimPrefix(comment.Text, "//tag:")
-				if tag != "" {
-					tags = append(tags, tag)
-				}
+func commentTags(group *ast.CommentGroup) (tags []string) {
+	for _, comment := range group.List {
+		if strings.HasPrefix(comment.Text, "//tag:") {
+			tag := strings.TrimPrefix(comment.Text, "//tag:")
+			if tag != "" {
+				tags = append(tags, tag)
 			}
 		}
 	}
@@ -69,7 +67,7 @@ func emitTags(pass *analysis.Pass, decl *ast.FuncDecl) {
 
 type tagCheckVisitor struct {
 	pass *analysis.Pass
-	comm []*ast.CommentGroup
+	file *ast.File
 	tags []string
 }
 
@@ -89,11 +87,10 @@ func (v tagCheckVisitor) Visit(node ast.Node) ast.Visitor {
 		}
 
 	case *ast.FuncDecl:
-		return tagCheckVisitor{v.pass, v.comm, v.objTags(v.pass.TypesInfo.Defs[node.Name])}
+		return tagCheckVisitor{v.pass, v.file, v.objTags(v.pass.TypesInfo.Defs[node.Name])}
 
 	case *ast.FuncLit:
-		cmap := ast.NewCommentMap(v.pass.Fset, node, v.comm)
-		return tagCheckVisitor{v.pass, v.comm, commentTags(cmap[node]...)}
+		return tagCheckVisitor{v.pass, v.file, v.lineTags(node.Pos())}
 	}
 	return v
 }
@@ -104,7 +101,16 @@ func (v tagCheckVisitor) objTags(obj types.Object) []string {
 	return []string(fact)
 }
 
-func (v tagCheckVisitor) lineTags(pos token.Pos) {
+func (v tagCheckVisitor) lineTags(pos token.Pos) (tags []string) {
+	file := v.pass.Fset.File(pos)
+	line := file.Line(pos)
+	for _, group := range v.file.Comments {
+		cline := file.Line(group.End())
+		if line == cline || line-1 == cline {
+			tags = append(tags, commentTags(group)...)
+		}
+	}
+	return tags
 }
 
 // checkTags checks that all tags in want also exist in have.
