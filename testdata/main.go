@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 //concur:main
 func foo() int { // want foo:`\[main\]`
 	return 0
@@ -57,4 +59,6 @@ func main() {
 	baz() // want `function baz called from wrong goroutine; main does not match \[bar\]`
 	go baz()
 	run(baz) // want `function run called from wrong goroutine; main does not match \[!main\]`
+
+	fmt.Println("foo")
 }

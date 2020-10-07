@@ -35,6 +35,9 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	}
 
 	ssaRes := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
+	if len(ssaRes.SrcFuncs) == 0 {
+		return nil, nil
+	}
 	g := rta.Analyze(ssaRes.SrcFuncs, true).CallGraph
 
 	for _, node := range g.Nodes {
@@ -119,23 +122,41 @@ func (c concurChecker) concurName(fun *ssa.Function) string {
 	}
 }
 
+func inRuntime(fun *ssa.Function) bool {
+	return fun.Pkg != nil && fun.Pkg.Pkg != nil && fun.Pkg.Pkg.Path() == "runtime"
+}
+
+func inPath(fun *ssa.Function, path []*ssa.Function) bool {
+	for _, pfun := range path {
+		if fun == pfun {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *concurChecker) visit(edge *callgraph.Edge, path []*ssa.Function, gopath []*ssa.Function, name string) {
+	// Special case to skip runtime since it's pointless to spend ages checking it
+	if inRuntime(edge.Callee.Func) {
+		return
+	}
+
 	if !c.check(edge, name) {
 		return
 	}
 
-	for _, fun := range path {
-		if fun == edge.Callee.Func {
-			return
-		}
+	if inPath(edge.Callee.Func, path) {
+		return
 	}
 
 	path = append(path, edge.Callee.Func)
 	for _, child := range edge.Callee.Out {
 		if _, ok := child.Site.(*ssa.Go); ok {
-			newName := c.concurName(child.Callee.Func)
-			newGopath := append(gopath, edge.Callee.Func)
-			c.visit(child, nil, newGopath, newName)
+			if !inPath(child.Callee.Func, gopath) {
+				newName := c.concurName(child.Callee.Func)
+				newGopath := append(gopath, edge.Callee.Func)
+				c.visit(child, nil, newGopath, newName)
+			}
 		} else {
 			c.visit(child, path, gopath, name)
 		}
