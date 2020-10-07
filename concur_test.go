@@ -1,4 +1,4 @@
-package tagcheck
+package concur
 
 import (
 	"testing"

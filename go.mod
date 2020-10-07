@@ -1,4 +1,4 @@
-module github.com/vktec/tagcheck
+module github.com/vktec/concur
 
 go 1.15
 

@@ -1,51 +1,60 @@
 package main
 
-//tag:foo
-func foo() int { // want foo:`tags: \[foo\]`
+//concur:main
+func foo() int { // want foo:`\[main\]`
 	return 0
 }
 
-//tag:foo
-//tag:bar
-func bar(_ int) { // want bar:`tags: \[foo bar\]`
-	foo()
+//concur:bar,main
+func bar(_ int) { // want bar:`\[bar main\]`
+	foo() // want `function foo called from wrong goroutine; bar does not match \[main\]`
 }
 
-func baz() {
-	foo()  // want "incorrect tags for call of foo: have [], want [foo]"
-	bar(0) // want "incorrect tags for call of bar: have [], want [foo bar]"
+//concur:bar
+func baz() { // want baz:`\[bar\]`
+	foo() // want `function foo called from wrong goroutine; bar does not match \[main\]`
+	bar(0)
 
 	func() {
-		foo()  // want "incorrect tags for call of foo: have [], want [foo]"
-		bar(0) // want "incorrect tags for call of bar: have [], want [foo bar]"
+		foo() // want `function foo called from wrong goroutine; bar does not match \[main\]`
+		bar(0)
 	}()
 
-	//tag:foo
-	//tag:bar
 	x := func() int {
-		bar(foo())
-		return foo()
+		bar(foo())   // want `function foo called from wrong goroutine; bar does not match \[main\]`
+		return foo() // want `function foo called from wrong goroutine; bar does not match \[main\]`
 	}()
 
-	go func() { //tag:foo
-		foo()
-	}()
-
-	x = run(func() { //tag:foo
-		foo()
+	x = run(func() {
+		foo() // want `function foo called from wrong goroutine; bar does not match \[main\]`
 	}).(int)
 	_ = x
+
+	ch := make(chan func(), 1)
+	ch <- quux
+	run(<-ch)
 }
 
-func run(f func()) interface{} {
-	f()
+//concur:quux
+func quux() { // want quux:`\[quux\]`
+}
+
+//concur:!main
+func run(f func()) interface{} { // want run:`\[!main\]`
+	f() // want `function quux called from wrong goroutine; bar does not match \[quux\]`
 	return 0
 }
 
-//tag:foo
-//tag:bar
-func main() { // want main:`tags: \[foo bar\]`
+func init() {
+	foo()
+	baz() // want `function baz called from wrong goroutine; main does not match \[bar\]`
+}
+
+func main() {
 	foo()
 	bar(0)
-	baz()
+	go bar(1)
+	baz() // want `function baz called from wrong goroutine; main does not match \[bar\]`
+	go baz()
+	run(baz) // want `function run called from wrong goroutine; main does not match \[!main\]`
 }
