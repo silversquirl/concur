@@ -22,6 +22,10 @@ func baz() { // want baz:`\[bar\]`
 		bar(0)
 	}()
 
+	go func() {
+		foo() // want `function foo called from wrong goroutine; baz\$2 does not match \[main\]`
+	}()
+
 	x := func() int {
 		bar(foo())   // want `function foo called from wrong goroutine; bar does not match \[main\]`
 		return foo() // want `function foo called from wrong goroutine; bar does not match \[main\]`
